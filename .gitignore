@@ -1,0 +1,9 @@
+node_modules/
+dist/
+cdk.out/
+.env
+config/league.json
+data/
+*.tsbuildinfo
+voice-profile.json
+messages-export/

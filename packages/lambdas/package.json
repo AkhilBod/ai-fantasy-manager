@@ -1,0 +1,23 @@
+{
+  "name": "@ffm/lambdas",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "mac-agent": "npm run mac-agent --prefix ../..",
+    "lineup": "npm run lineup --prefix ../..",
+    "waivers": "npm run waivers --prefix ../..",
+    "trades": "npm run trades --prefix ../..",
+    "espn:smoke": "npm run espn:smoke --prefix ../..",
+    "review-trades": "npm run review-trades --prefix ../..",
+    "inbox": "npm run inbox --prefix ../.."
+  },
+  "dependencies": {
+    "@ffm/core": "*",
+    "@aws-sdk/client-lambda": "^3.1141.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.0"
+  }
+}

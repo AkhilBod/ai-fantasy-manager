@@ -1,0 +1,35 @@
+{
+  "name": "ai-fantasy-manager",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "tsc -b packages/core packages/mac-agent packages/lambdas packages/infra",
+    "test": "vitest run",
+    "espn:smoke": "tsx packages/core/src/cli/smoke.ts",
+    "lineup": "tsx packages/core/src/cli/lineup.ts",
+    "waivers": "tsx packages/core/src/cli/waivers.ts",
+    "trades": "tsx packages/core/src/cli/trades.ts",
+    "voice:build": "tsx packages/core/src/cli/voice-build.ts",
+    "mac-agent": "tsx packages/mac-agent/src/index.ts",
+    "cdk": "cd packages/infra && cdk",
+    "review-trades": "tsx packages/core/src/cli/review-trades.ts",
+    "inbox": "tsx packages/core/src/cli/inbox.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.0",
+    "typescript": "^5.9.0",
+    "vitest": "^5.0.0"
+  },
+  "optionalDependencies": {
+    "@rolldown/binding-darwin-arm64": "1.2.11"
+  }
+}

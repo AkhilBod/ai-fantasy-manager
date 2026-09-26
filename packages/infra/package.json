@@ -1,0 +1,26 @@
+{
+  "name": "@ffm/infra",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "cdk": "cdk",
+    "deploy": "cdk deploy --require-approval never",
+    "synth": "cdk synth",
+    "mac-agent": "npm run mac-agent --prefix ../..",
+    "lineup": "npm run lineup --prefix ../..",
+    "waivers": "npm run waivers --prefix ../..",
+    "trades": "npm run trades --prefix ../..",
+    "espn:smoke": "npm run espn:smoke --prefix ../..",
+    "review-trades": "npm run review-trades --prefix ../..",
+    "inbox": "npm run inbox --prefix ../.."
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.271.0",
+    "constructs": "^10.4.0"
+  },
+  "devDependencies": {
+    "aws-cdk": "^2.1143.0"
+  }
+}

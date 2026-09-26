@@ -1,0 +1,35 @@
+{
+  "maxFaabPctPerWeek": 0.35,
+  "maxDropsPerWeek": 3,
+  "maxOpenTrades": 4,
+  "minTradeGainPct": 0.08,
+  "protectTopNRanked": 12,
+  "protectedTradeGainPct": 0.15,
+  "maxTextsPerPersonPerDay": 2,
+  "quietHours": {
+    "start": 23,
+    "end": 8
+  },
+  "negotiationExpiryDays": 3,
+  "maxCounterRounds": 3,
+  "autoAcceptIncoming": true,
+  "maxNewOffersPerWeek": 9,
+  "teamCooldownDays": 7,
+  "maxTheirLossPct": 0.15,
+  "acceptIncomingMinGainPct": 0.2,
+  "bannedWords": [
+    "nga",
+    "ngas",
+    "ng",
+    "nigga",
+    "niggas"
+  ],
+  "maxMessageWords": 15,
+  "maxMessageLines": 2,
+  "minLineupDelta": 1.0,
+  "maxRepliesPerPersonPerDay": 60,
+  "maxSilentProposalsPerDay": 2,
+  "silentProposalCooldownDays": 4,
+  "unresponsiveCooldownDays": 21,
+  "declinedCooldownDays": 14
+}

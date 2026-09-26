@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Install:
+  sed "s#__ROOT__#$(pwd)#g; s#__NODE__#$(dirname $(which node))#g" packages/mac-agent/launchd.plist > ~/Library/LaunchAgents/com.ffm.mac-agent.plist
+  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ffm.mac-agent.plist
+  launchctl kickstart -k gui/$(id -u)/com.ffm.mac-agent
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.ffm.mac-agent</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE__/npx</string>
+    <string>tsx</string>
+    <string>__ROOT__/packages/mac-agent/src/index.ts</string>
+  </array>
+  <key>WorkingDirectory</key><string>__ROOT__</string>
+  <key>EnvironmentVariables</key>
+  <dict><key>PATH</key><string>__NODE__:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>__ROOT__/data/mac-agent.log</string>
+  <key>StandardErrorPath</key><string>__ROOT__/data/mac-agent.err</string>
+</dict>
+</plist>

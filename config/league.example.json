@@ -1,0 +1,14 @@
+{
+  "leagueId": 123456,
+  "season": 2026,
+  "myTeamId": 1,
+  "timezone": "America/New_York",
+  "teams": {
+    "1": { "name": "Akhil", "phone": "+15555550100", "self": true },
+    "2": { "name": "Ravi", "phone": "+15555550101" },
+    "3": { "name": "Mike", "phone": "+15555550102" }
+  },
+  "leagueGroupChatName": "Fantasy 2026",
+  "untouchables": [],
+  "trustedFirst": ["2"]
+}
