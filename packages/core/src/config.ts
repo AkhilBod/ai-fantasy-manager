@@ -54,6 +54,8 @@ export const RulesSchema = z.object({
   /** silent ESPN proposals (no text): per day, only when none of mine are pending */
   maxSilentProposalsPerDay: z.number().default(2),
   silentProposalCooldownDays: z.number().default(4),
+  /** candidate generation only: offers where the other side loses more than this on paper are pointless, nobody says yes */
+  maxImplausibleLossPct: z.number().default(0.35),
   /** no reply to an offer → leave them alone this long; explicit no → this long */
   unresponsiveCooldownDays: z.number().default(21),
   declinedCooldownDays: z.number().default(14),

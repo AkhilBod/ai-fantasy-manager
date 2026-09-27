@@ -9,11 +9,11 @@ import { proposeTrade } from "../espn/transactions.js";
 import { draftMessage } from "../voice/draft.js";
 import type { VoiceBundle, MessageIntent } from "../voice/types.js";
 import { newId, ACTIVE_STATUSES, OPEN_STATUSES, type Negotiation } from "../store/types.js";
-import { gain, type TradeIdea } from "./trades.js";
+import { gain, generateCandidates, type TradeIdea } from "./trades.js";
 import { env } from "../config.js";
 
 const Decision = z.object({
-  action: z.enum(["reply", "counter", "accept", "walk_away", "ignore"]),
+  action: z.enum(["reply", "counter", "accept", "send", "walk_away", "ignore"]),
   theirOffer: z.object({
     give: z.array(z.number()).describe("player ids I would GIVE under the terms THEY proposed"),
     get: z.array(z.number()).describe("player ids I would GET under the terms THEY proposed"),
@@ -76,7 +76,9 @@ export async function handleInbound(ctx: Ctx, bundle: VoiceBundle, n: Negotiatio
     output_config: { format: zodOutputFormat(Decision), effort: "high" },
     system: [
       "You are negotiating a fantasy football trade over text on behalf of the manager of 'my team'. Decide the next move.",
-      "accept = they've agreed to the current terms (or offered something at least as good for me). counter = propose different terms (or first terms, if none yet). reply = keep talking / answer a question / ask what they have in mind, without changing terms. walk_away = they're clearly not interested or it's a bad deal FOR ME. ignore = message doesn't need a response (banter, 'lol').",
+      "accept = they've agreed to the current terms (or offered something at least as good for me). send = they asked me to put the current offer on ESPN so they can look at it there ('send it', 'send something', 'put it in'); not an agreement yet. counter = propose different terms (or first terms, if none yet). reply = answer a real question without changing terms. walk_away = they clearly declined, or it's a bad deal FOR ME. ignore = no response needed: banter, 'lol', 'hmm', 'ok', 'k', a lukewarm non-answer, or anything where the only thing I could say is re-pitching the same offer.",
+      "If they ask what I want / for an alternative, COUNTER with one of the ready-made deals listed under 'Deals I'd do with them' (best lineup gain first). Never answer 'what do you want' with a question or a pass.",
+      "NEVER re-pitch, sell, or justify an offer I already made ('still open?', 'he's expendable', 'X a game'). If they're lukewarm, ignore. If they say no, take it. On a thread I started, walk_away is only for an actual no.",
       "If THEY propose terms that favor me, take them (accept, or lock in via counter with the exact terms they named). Never walk away from a deal that helps my lineup. The only thing that matters is my team; how the deal looks for them is their call.",
       "If they name a player without saying which side it's on, read it from rosters: a player on THEIR roster is what they'd send me. If still unclear, reply asking, don't guess.",
       "They may know a bot is texting for me. Don't deny it, don't discuss it; just talk trades like normal.",
@@ -84,6 +86,7 @@ export async function handleInbound(ctx: Ctx, bundle: VoiceBundle, n: Negotiatio
       "Reply whenever they say something (they started the conversation, so they expect answers); just don't repeat yourself.",
       "Leverage: other managers may be offering things too (see 'other live offers'). You may mention you have other options, truthfully and briefly, to get a better price; take whichever deal is better for me. Never stall on a vague promise ('I might add someone later'): ask them to name it now or move on.",
       hasTerms ? "" : "There are NO terms yet: they reached out first. If they named players, evaluate that as their offer (counter with concrete terms or accept via counter). If they haven't said what they want, reply asking, in one short text.",
+      n.status === "PROPOSED" ? "This offer is sitting on ESPN for them to look at. Don't re-pitch it or tell them to accept. If they counter, evaluate; if they decline, take it; otherwise ignore." : "",
       n.status === "SUBMITTED" ? "The trade is ALREADY SUBMITTED on ESPN. Do not accept/counter again. Do NOT restate the terms and NEVER tell them to accept, press accept, or check ESPN; they'll do it when they want. Only reply if they ask a real question; otherwise ignore." : "",
       done ? "This trade is DONE (accepted on ESPN). Do NOT mention the terms, do NOT tell them to accept, do NOT re-propose. Light banter at most; default to ignore." : "",
       `Hard limits: never give more than ${ctx.rules.maxCounterRounds} counters; don't accept anything the value check would reject; be a normal human, not desperate. If they say no twice, take the no. Never pressure, guilt, or spam them. Be skeptical: if they suddenly push a player on me, check the news for why (injury, lost job, bye-week dump).`,
@@ -96,8 +99,9 @@ export async function handleInbound(ctx: Ctx, bundle: VoiceBundle, n: Negotiatio
         `My team:\n${teamBlock(ctx, ctx.me)}`,
         `Their team:\n${teamBlock(ctx, other)}`,
         news ? `Latest news on the players involved:\n${news}` : "",
+        counterMenu(ctx, other),
         await otherLiveOffers(ctx, n),
-        `Thread:\n${n.thread.map((t) => `${t.from === "me" ? "ME" : "THEM"}: ${t.text}`).join("\n")}`,
+        `Thread (with how long ago each was sent; if their last message is hours old, acknowledge the gap naturally, e.g. "my b just saw this"):\n${n.thread.map((t) => `${t.from === "me" ? "ME" : "THEM"} [${ago(t.at)}]: ${t.text}`).join("\n")}`,
       ].filter(Boolean).join("\n\n"),
     }],
   });
@@ -106,13 +110,22 @@ export async function handleInbound(ctx: Ctx, bundle: VoiceBundle, n: Negotiatio
   if (!d) { await persist(); return "no decision"; }
 
   let outcome = d.action;
+  // They asked what I want and the model didn't name terms: take the best ready-made deal.
+  if (/\b(what (do )?(u|you) (want|lookin|looking)|who (u|you) (want|lookin|looking)|alternative|what would (u|you) (do|take)|make (me )?an offer|ur offer|your offer)\b/i.test(incoming) && (outcome === "reply" || outcome === "walk_away" || outcome === "ignore")) {
+    const best = generateCandidates(ctx, [other]).map((c) => ({ ...c, lineup: lineupDelta(ctx, c.give, c.get) })).filter((c) => c.lineup >= ctx.rules.minLineupDelta).sort((a, b) => b.lineup - a.lineup)[0];
+    if (best) { outcome = "counter"; d.counterGive = best.give; d.counterGet = best.get; d.messageGoal = `Offer ${names(ctx, best.give)} for ${names(ctx, best.get)}.`; }
+  }
+  // Vague acknowledgments never get a reply.
+  if (/^\s*(hmm+|ok+|k+|lol+|lmao+|bet+|aight|ight|word|yea+|ye|nah)\W*$/i.test(incoming) && outcome !== "accept" && outcome !== "send") outcome = "ignore";
+  // On a thread I started, only an explicit no is a walk-away; anything else is silence, never a retraction.
+  if (n.initiatedBy !== "them" && outcome === "walk_away" && !/\b(no|nah|nope|pass|not interested|im good|i'm good|hard pass|not doing|cant do|can't do)\b/i.test(incoming)) outcome = "ignore";
   // Hard rule: a deal THEY proposed that passes my checks gets taken, whatever the model felt about it.
   if (n.status !== "SUBMITTED" && d.theirOffer && d.theirOffer.give.length && d.theirOffer.get.length) {
     const t = d.theirOffer;
     const onMine = t.give.every((id) => ctx.me.roster.some((e) => e.player.id === id));
     const onTheirs = t.get.every((id) => other.roster.some((e) => e.player.id === id));
     const ok = onMine && onTheirs
-      && checkTrade({ give: t.give, get: t.get, values: ctx.values, rosRank: ctx.rosRank, players: ctx.players, mode: "respond", committed: ctx.committed, lineupDelta: lineupDelta(ctx, t.give, t.get) }, ctx.cfg, ctx.rules).ok
+      && checkTrade({ give: t.give, get: t.get, values: ctx.values, rosRank: ctx.rosRank, players: ctx.players, mode: "respond", committed: ctx.committed, benchIds: ctx.benchIds, lineupDelta: lineupDelta(ctx, t.give, t.get) }, ctx.cfg, ctx.rules).ok
       && checkReceivedHealthy(t.get, ctx.players).ok;
     if (ok && (outcome === "walk_away" || outcome === "reply" || outcome === "counter" || outcome === "ignore")) {
       n.give = t.give; n.get = t.get; outcome = "accept";
@@ -123,7 +136,7 @@ export async function handleInbound(ctx: Ctx, bundle: VoiceBundle, n: Negotiatio
   if (done && outcome === "walk_away") outcome = "ignore";
   if (d.action === "counter") {
     const give = d.counterGive ?? n.give, get = d.counterGet ?? n.get;
-    const check = checkTrade({ give, get, values: ctx.values, rosRank: ctx.rosRank, players: ctx.players, mode: "respond", committed: ctx.committed, lineupDelta: lineupDelta(ctx, give, get) }, ctx.cfg, ctx.rules);
+    const check = checkTrade({ give, get, values: ctx.values, rosRank: ctx.rosRank, players: ctx.players, mode: "respond", committed: ctx.committed, benchIds: ctx.benchIds, lineupDelta: lineupDelta(ctx, give, get) }, ctx.cfg, ctx.rules);
     if (!check.ok || n.rounds >= ctx.rules.maxCounterRounds) {
       outcome = "walk_away";
       d.messageGoal = `Politely pass on this one for now; keep it friendly. (${check.reasons.join("; ") || "too many rounds"})`;
@@ -133,7 +146,7 @@ export async function handleInbound(ctx: Ctx, bundle: VoiceBundle, n: Negotiatio
     }
   }
   if (outcome === "accept") {
-    const check = checkTrade({ give: n.give, get: n.get, values: ctx.values, rosRank: ctx.rosRank, players: ctx.players, mode: "respond", committed: ctx.committed, lineupDelta: lineupDelta(ctx, n.give, n.get) }, ctx.cfg, ctx.rules);
+    const check = checkTrade({ give: n.give, get: n.get, values: ctx.values, rosRank: ctx.rosRank, players: ctx.players, mode: "respond", committed: ctx.committed, benchIds: ctx.benchIds, lineupDelta: lineupDelta(ctx, n.give, n.get) }, ctx.cfg, ctx.rules);
     const healthy = checkReceivedHealthy(n.get, ctx.players);
     if (!check.ok || !healthy.ok) { outcome = "walk_away"; d.messageGoal = `Back out politely: ${[...check.reasons, ...healthy.reasons].join("; ")}`; }
     else {
@@ -146,6 +159,21 @@ export async function handleInbound(ctx: Ctx, bundle: VoiceBundle, n: Negotiatio
       d.messageGoal = `Tell them it's a deal and it's sent on ESPN. Say that once; don't tell them to accept. ${d.messageGoal}`;
     }
   }
+  if (outcome === "send") {
+    if (!hasTerms || n.status === "PROPOSED" || n.status === "SUBMITTED") outcome = "ignore";
+    else {
+      const check = checkTrade({ give: n.give, get: n.get, values: ctx.values, rosRank: ctx.rosRank, players: ctx.players, mode: "respond", committed: ctx.committed, benchIds: ctx.benchIds, lineupDelta: lineupDelta(ctx, n.give, n.get) }, ctx.cfg, ctx.rules);
+      if (!check.ok) outcome = "ignore";
+      else {
+        const drops = pickDrops(ctx, n.give, n.get);
+        const r = await proposeTrade({ client: ctx.client, teamId: ctx.me.id, week: ctx.week }, { otherTeamId: n.otherTeamId, give: n.give, get: n.get, drops });
+        n.status = "PROPOSED";
+        n.espnTradeId = (r as any).response?.id ? String((r as any).response.id) : n.espnTradeId;
+        await ctx.store.logAction({ kind: "trade_proposal", summary: `sent to ESPN at their request: team ${n.otherTeamId} give ${names(ctx, n.give)} get ${names(ctx, n.get)}`, dryRun: r.dryRun, payload: { give: n.give, get: n.get, drops } });
+        d.messageGoal = "Say it's sent, in two or three words. Nothing else.";
+      }
+    }
+  }
   if (outcome === "walk_away") {
     n.status = "WALKED";
     if (n.initiatedBy !== "them") await markDisengaged(ctx, n.otherTeamId, ctx.rules.declinedCooldownDays, "not interested in my offer");
@@ -154,6 +182,7 @@ export async function handleInbound(ctx: Ctx, bundle: VoiceBundle, n: Negotiatio
 
   if (outcome !== "ignore") {
     const intent: MessageIntent = outcome === "accept" ? "accept" : outcome === "counter" ? "counter" : outcome === "walk_away" ? "decline" : "reply";
+    if (outcome === "send") { n.thread.push({ from: "me", text: "sent", at: new Date().toISOString() }); if (!env.dryRun) await ctx.store.enqueueOutbound({ phone: n.phone, text: "sent", negotiationId: n.id }); await persist(); return `send: proposal on ESPN`; }
     await sendInVoice(ctx, bundle, n, intent, d.messageGoal);
   }
   await persist();
@@ -319,4 +348,21 @@ export async function markDisengaged(ctx: Ctx, teamId: number, days: number, why
   const until = new Date(Date.now() + days * 86400_000).toISOString();
   if (!env.dryRun) await ctx.store.setState(`disengaged:${teamId}`, until);
   await ctx.store.logAction({ kind: "system", summary: `no more offers to ${ctx.cfg.teams[String(teamId)]?.name ?? teamId} until ${until.slice(0, 10)}: ${why}`, dryRun: env.dryRun });
+}
+
+/** Best deals vs this manager by my lineup gain, so the model can answer "what do you want" with terms. */
+function counterMenu(ctx: Ctx, other: { id: number }): string {
+  const team = ctx.snap.teams.find((t) => t.id === other.id);
+  if (!team) return "";
+  const best = generateCandidates(ctx, [team]).map((c) => ({ ...c, lineup: lineupDelta(ctx, c.give, c.get) })).filter((c) => c.lineup >= ctx.rules.minLineupDelta).sort((a, b) => b.lineup - a.lineup).slice(0, 5);
+  if (!best.length) return "Deals I'd do with them: none clear my bar right now.";
+  return "Deals I'd do with them (ids in parentheses):\n" + best.map((c) => `- give ${c.give.map((id) => `${ctx.players.get(id)?.name} (${id})`).join(" + ")} for ${c.get.map((id) => `${ctx.players.get(id)?.name} (${id})`).join(" + ")}: my lineup +${c.lineup}/wk`).join("\n");
+}
+
+function ago(iso: string): string {
+  const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000));
+  if (m < 2) return "just now";
+  if (m < 60) return `${m}m ago`;
+  if (m < 48 * 60) return `${Math.round(m / 60)}h ago`;
+  return `${Math.round(m / 1440)}d ago`;
 }

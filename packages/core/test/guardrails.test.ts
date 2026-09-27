@@ -10,7 +10,7 @@ import { join } from "node:path";
 
 const rules = RulesSchema.parse({
   maxFaabPctPerWeek: 0.35, maxDropsPerWeek: 3, maxOpenTrades: 2, minTradeGainPct: 0.05, minRespondGainPct: 0.02, minRespondLineupDelta: 0, protectTopNRanked: 12,
-  protectedTradeGainPct: 0.15, maxTextsPerPersonPerDay: 3, maxRepliesPerPersonPerDay: 30, quietHours: { start: 23, end: 8 }, negotiationExpiryDays: 3, maxCounterRounds: 4, autoAcceptIncoming: false, bannedWords: ["nga"], maxMessageWords: 15, maxMessageLines: 2, minLineupDelta: 1, maxSilentProposalsPerDay: 2, silentProposalCooldownDays: 4, unresponsiveCooldownDays: 21, declinedCooldownDays: 14,
+  protectedTradeGainPct: 0.15, maxTextsPerPersonPerDay: 3, maxRepliesPerPersonPerDay: 30, quietHours: { start: 23, end: 8 }, negotiationExpiryDays: 3, maxCounterRounds: 4, autoAcceptIncoming: false, bannedWords: ["nga"], maxMessageWords: 15, maxMessageLines: 2, minLineupDelta: 1, maxSilentProposalsPerDay: 2, silentProposalCooldownDays: 4, maxImplausibleLossPct: 0.35, unresponsiveCooldownDays: 21, declinedCooldownDays: 14,
 });
 const cfg: LeagueConfig = { leagueId: 1, season: 2026, myTeamId: 1, timezone: "America/New_York", teams: {}, untouchables: [77], trustedFirst: [] };
 
@@ -34,6 +34,15 @@ describe("checkTrade", () => {
     expect(checkTrade({ give: [1], get: [2], values: new Map([[1, 100], [2, 103]]), players, mode: "respond" }, cfg, rules).ok).toBe(true);
     expect(checkTrade({ give: [1], get: [2], values: new Map([[1, 100], [2, 103]]), players, mode: "initiate" }, cfg, rules).ok).toBe(false);
     expect(checkTrade({ give: [1], get: [2], values: new Map([[1, 100], [2, 99]]), players, mode: "respond" }, cfg, rules).ok).toBe(false);
+  });
+  it("discounts my bench players on the give side", () => {
+    const values = new Map([[1, 128], [2, 98]]);
+    expect(checkTrade({ give: [1], get: [2], values, players }, cfg, rules).ok).toBe(false);
+    expect(checkTrade({ give: [1], get: [2], values, players, benchIds: new Set([1]) }, cfg, rules).ok).toBe(true);
+  });
+  it("lets a big lineup win override a paper value loss", () => {
+    expect(checkTrade({ give: [1], get: [2], values: new Map([[1, 128], [2, 98]]), players, lineupDelta: 6 }, cfg, rules).ok).toBe(true);
+    expect(checkTrade({ give: [1], get: [2], values: new Map([[1, 128], [2, 60]]), players, lineupDelta: 6 }, cfg, rules).ok).toBe(false);
   });
   it("blocks trades that don't improve the starting lineup", () => {
     expect(checkTrade({ give: [1], get: [2], values: new Map([[1, 100], [2, 120]]), players, lineupDelta: -2 }, cfg, rules).ok).toBe(false);

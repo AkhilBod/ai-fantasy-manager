@@ -23,6 +23,7 @@ describe("checkDraft hard rules", () => {
     expect((await checkDraft(bundle, "as an AI i think")).feedback).toMatch(/AI/);
     expect((await checkDraft(bundle, "lmaooo nah thats me bru")).feedback).toMatch(/human/);
     expect((await checkDraft(bundle, "just hit accept on espn")).feedback).toMatch(/pesters/);
+    expect((await checkDraft(bundle, "dak for wilson still open? he expendable 22 a game")).feedback).toMatch(/salesman/);
     expect((await checkDraft(bundle, "yo 🔥")).feedback).toMatch(/emoji/);
     expect((await checkDraft(bundle, Array(40).fill("word").join(" "))).feedback).toMatch(/too long/);
     expect((await checkDraft(bundle, "a — b")).feedback).toMatch(/em dash/);

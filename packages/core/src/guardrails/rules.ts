@@ -14,13 +14,17 @@ export interface TradeCheckInput {
   committed?: Set<number>;
   /** "initiate" (my idea, higher bar) or "respond" (their offer / my counter to it: just don't lose) */
   mode?: "initiate" | "respond";
+  /** my bench players: giving one away costs a fraction of his value */
+  benchIds?: Set<number>;
 }
+
+export const BENCH_DISCOUNT = 0.6;
 
 export interface CheckResult { ok: boolean; reasons: string[] }
 
 export function checkTrade(input: TradeCheckInput, cfg: LeagueConfig, rules: Rules): CheckResult {
   const reasons: string[] = [];
-  const giveV = input.give.reduce((s, id) => s + (input.values.get(id) ?? 0), 0);
+  const giveV = input.give.reduce((s, id) => s + (input.values.get(id) ?? 0) * (input.benchIds?.has(id) ? BENCH_DISCOUNT : 1), 0);
   const getV = input.get.reduce((s, id) => s + (input.values.get(id) ?? 0), 0);
   const gain = giveV === 0 ? (getV > 0 ? 1 : 0) : (getV - giveV) / giveV;
 
@@ -34,7 +38,9 @@ export function checkTrade(input: TradeCheckInput, cfg: LeagueConfig, rules: Rul
   }
   const minGain = input.mode === "respond" ? rules.minRespondGainPct : rules.minTradeGainPct;
   const minLineup = input.mode === "respond" ? rules.minRespondLineupDelta : rules.minLineupDelta;
-  if (gain < minGain) reasons.push(`value gain ${pct(gain)} below floor ${pct(minGain)} (give ${giveV.toFixed(1)}, get ${getV.toFixed(1)})`);
+  // A big starting-lineup win (e.g. moving a surplus QB for a starter) beats a paper value loss, within reason.
+  const bigLineupWin = input.lineupDelta != null && input.lineupDelta >= rules.minLineupDelta * 3 && gain >= -0.3;
+  if (gain < minGain && !bigLineupWin) reasons.push(`value gain ${pct(gain)} below floor ${pct(minGain)} (give ${giveV.toFixed(1)}, get ${getV.toFixed(1)})`);
   if (input.lineupDelta != null && input.lineupDelta < minLineup) reasons.push(`starting lineup would change by ${input.lineupDelta.toFixed(1)} pts/wk (need ≥ ${minLineup})`);
   if (input.give.length === 0 || input.get.length === 0) reasons.push("trade must move players both ways");
   return { ok: reasons.length === 0, reasons };

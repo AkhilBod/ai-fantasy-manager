@@ -115,7 +115,7 @@ async function routeInbound(s: ReturnType<typeof store>, msg: InboundMessage): P
   const teamEntry = Object.entries(cfg.teams).find(([, t]) => t.phone === msg.phone);
   if (!teamEntry) return "not a league member";
   const teamId = Number(teamEntry[0]);
-  let thread = (await s.listNegotiations({ open: true, phone: msg.phone }))[0];
+  let thread = (await s.listNegotiations({ open: true, phone: msg.phone })).sort((a, b) => (a.status === "SUBMITTED" ? 1 : 0) - (b.status === "SUBMITTED" ? 1 : 0))[0];
   if (!thread) {
     // A thread that closed in the last 24h gets reopened: "and someone else" after a walk-away is still the same conversation.
     const recent = (await s.listNegotiations({ phone: msg.phone }))

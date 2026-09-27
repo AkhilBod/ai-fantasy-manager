@@ -26,5 +26,6 @@
   "unresponsiveCooldownDays": 21,
   "declinedCooldownDays": 14,
   "minRespondGainPct": 0.02,
-  "minRespondLineupDelta": 0.0
+  "minRespondLineupDelta": 0.0,
+  "maxImplausibleLossPct": 0.35
 }

@@ -10,7 +10,7 @@ const BuildSchema = z.object({ profile: VoiceProfileSchema, fewshots: z.array(Fe
  * League/leaguemate chats are weighted first; "other" fills in general voice.
  */
 export async function buildVoiceBundle(messages: ExportedMessage[], opts: { maxMessages?: number } = {}): Promise<VoiceBundle> {
-  const max = opts.maxMessages ?? 2500;
+  const max = opts.maxMessages ?? 6000;
   const ranked = [...messages]
     .filter((m) => m.text.trim().length > 0 && !/^https?:\/\/\S+$/.test(m.text.trim()))
     .sort((a, b) => weight(b) - weight(a) || b.at.localeCompare(a.at))
@@ -25,7 +25,7 @@ export async function buildVoiceBundle(messages: ExportedMessage[], opts: { maxM
     system: [
       "You are building a writing-style profile of one person from their own iMessages so an assistant can text on their behalf and be indistinguishable from them.",
       "Be concrete and verbatim: quote the exact slang, abbreviations, punctuation habits, and emoji they use. Note what they NEVER do.",
-      "For fewshots, pick 40-60 REAL messages from the corpus (copy exactly, do not edit) that best represent each intent. Prefer [league] and [leaguemate] messages. Cover: propose (offering something / asking for something), counter, accept, decline, nudge (following up), banter, reply (short reactions), summary (explaining something).",
+      "For fewshots, pick 80-120 REAL messages from the corpus (copy exactly, do not edit) that best represent each intent. Prefer [league] and [leaguemate] messages. Cover: propose (offering something / asking for something), counter, accept, decline, nudge (following up), banter, reply (short reactions), summary (explaining something).",
       "Never include names of third parties, phone numbers, addresses, or anything sensitive in fewshots; skip such messages.",
     ].join("\n"),
     messages: [{ role: "user", content: `Corpus (${ranked.length} messages, newest first within each group):\n\n${corpus}` }],

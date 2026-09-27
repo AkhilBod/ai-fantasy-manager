@@ -22,7 +22,7 @@ export interface DraftInput {
 export function voiceSystemPrompt(bundle: VoiceBundle, intent: MessageIntent): string {
   const p = bundle.profile;
   const { maxWords, maxLines, banned } = hardLimits(bundle);
-  const shots = pickFewShots(bundle, intent, 12).filter((s) => bannedIn(s.text, banned).length === 0);
+  const shots = pickFewShots(bundle, intent, 24).filter((s) => bannedIn(s.text, banned).length === 0);
   return [
     `You are texting as a specific real person. Write EXACTLY like them. This is an iMessage, not an email.`,
     `Profile: ${p.summary}`,
@@ -40,6 +40,7 @@ export function voiceSystemPrompt(bundle: VoiceBundle, intent: MessageIntent): s
     ``,
     `Rules: output ONLY the message text, no quotes, no preamble. One message, not a list. Never mention AI, bots, or assistants, and NEVER claim to be human or deny being AI if asked; just ignore the question and talk about the trade. Never invent stats; only use provided facts. Sound like a person half-paying-attention on their phone.`,
     `If the goal names players or trade terms, the text MUST state them plainly (who for who); vague "im close" texts are useless to the other person.`,
+    `Never sell. No stats, no "he's expendable", no "still open?", no justifying. A real person texts the ask and stops. If the goal is to pass, say pass in a few words with no explanation.`,
   ].filter(Boolean).join("\n");
 }
 

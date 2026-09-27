@@ -130,6 +130,7 @@ All of these are enforced in code. Change the numbers to taste; the shipped defa
 | `acceptIncomingMinGainPct` | 0.20 | Auto-accept incoming offers only above this |
 | `autoAcceptIncoming` | true | Set false to always counter instead of accepting outright |
 | `protectTopNRanked` / `protectedTradeGainPct` | 12 / 0.15 | Top-N consensus players need a bigger gain to be moved |
+| `maxImplausibleLossPct` | 0.35 | Don't generate offers the other side would never take (they lose more than this on paper) |
 | `maxCounterRounds` | 3 | Then it walks |
 | `negotiationExpiryDays` | 3 | Stale threads close |
 

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { llm, modelId, assertNotRefused } from "./llm.js";
 import { positionalNeeds, teamBlock, type Ctx } from "./context.js";
 import { lineupDelta } from "./context.js";
-import { checkTrade } from "../guardrails/rules.js";
+import { checkTrade, BENCH_DISCOUNT } from "../guardrails/rules.js";
 import { sumValue } from "../valuation/player-value.js";
 import type { Team } from "../espn/types.js";
 import { newsBrief } from "../data/news.js";
@@ -72,7 +72,7 @@ export async function scanTrades(ctx: Ctx, opts: { maxIdeas?: number; excludeTea
   const out: TradeIdea[] = [];
   const used = new Set<number>();
   for (const idea of ideas) {
-    const check = checkTrade({ give: idea.give, get: idea.get, values: ctx.values, rosRank: ctx.rosRank, players: ctx.players, committed: ctx.committed, lineupDelta: lineupDelta(ctx, idea.give, idea.get) }, ctx.cfg, ctx.rules);
+    const check = checkTrade({ give: idea.give, get: idea.get, values: ctx.values, rosRank: ctx.rosRank, players: ctx.players, committed: ctx.committed, benchIds: ctx.benchIds, lineupDelta: lineupDelta(ctx, idea.give, idea.get) }, ctx.cfg, ctx.rules);
     if (!check.ok) { console.log(`[trades] dropped idea vs team ${idea.otherTeamId}: ${check.reasons.join("; ")}`); continue; }
     if (idea.give.some((id) => used.has(id))) continue;
     const other = others.find((t) => t.id === idea.otherTeamId);
@@ -84,15 +84,16 @@ export async function scanTrades(ctx: Ctx, opts: { maxIdeas?: number; excludeTea
 }
 
 export function gain(ctx: Ctx, give: number[], get: number[]): number {
-  const g = sumValue(give, ctx.values);
+  const g = give.reduce((s, id) => s + (ctx.values.get(id) ?? 0) * (ctx.benchIds.has(id) ? BENCH_DISCOUNT : 1), 0);
   const r = sumValue(get, ctx.values);
   return g === 0 ? (r > 0 ? 1 : 0) : (r - g) / g;
 }
 
-function generateCandidates(ctx: Ctx, others: Team[]) {
+export function generateCandidates(ctx: Ctx, others: Team[]) {
   const mine = ctx.me.roster.map((e) => e.player).filter((p) => !ctx.cfg.untouchables.includes(p.id) && !ctx.committed.has(p.id));
   const out: { otherTeamId: number; give: number[]; get: number[]; myGainPct: number; theirGainPct: number }[] = [];
   const v = (id: number) => ctx.values.get(id) ?? 0;
+  const cost = (id: number) => v(id) * (ctx.benchIds.has(id) ? BENCH_DISCOUNT : 1);
   const lv = (id: number) => ctx.linearValues.get(id) ?? 0;
   for (const t of others) {
     const theirs = t.roster.map((e) => e.player);
@@ -100,17 +101,17 @@ function generateCandidates(ctx: Ctx, others: Team[]) {
       if (v(want.id) < 5) continue;
       // 1-for-1
       for (const g of mine) {
-        const my = (v(want.id) - v(g.id)) / Math.max(1, v(g.id));
+        const my = (v(want.id) - cost(g.id)) / Math.max(1, cost(g.id));
         const their = (lv(g.id) - lv(want.id)) / Math.max(1, lv(want.id));
-        if (my >= ctx.rules.minTradeGainPct) out.push({ otherTeamId: t.id, give: [g.id], get: [want.id], myGainPct: my, theirGainPct: their });
+        if (my >= ctx.rules.minTradeGainPct && their >= -ctx.rules.maxImplausibleLossPct) out.push({ otherTeamId: t.id, give: [g.id], get: [want.id], myGainPct: my, theirGainPct: their });
       }
       // 2-for-1 consolidation
       for (let i = 0; i < mine.length; i++) for (let j = i + 1; j < mine.length; j++) {
         const give = [mine[i].id, mine[j].id];
-        const gv = v(give[0]) + v(give[1]);
+        const gv = cost(give[0]) + cost(give[1]);
         const my = (v(want.id) - gv) / Math.max(1, gv);
         const their = (lv(give[0]) + lv(give[1]) - lv(want.id)) / Math.max(1, lv(want.id));
-        if (my >= ctx.rules.minTradeGainPct && v(want.id) > Math.max(v(give[0]), v(give[1])) * 1.3) out.push({ otherTeamId: t.id, give, get: [want.id], myGainPct: my, theirGainPct: their });
+        if (my >= ctx.rules.minTradeGainPct && their >= -ctx.rules.maxImplausibleLossPct && v(want.id) > Math.max(v(give[0]), v(give[1])) * 1.3) out.push({ otherTeamId: t.id, give, get: [want.id], myGainPct: my, theirGainPct: their });
       }
     }
   }

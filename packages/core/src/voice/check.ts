@@ -36,6 +36,7 @@ export async function checkDraft(bundle: VoiceBundle, text: string): Promise<Dra
   if (/\b(AI|assistant|bot|language model)\b/i.test(text)) hard.push("mentions AI/bot");
   if (/\b(nah|no|lol|lmao+)?\s*(its|it's|thats|that's|this is)\s+(just\s+)?me\b|\bim (real|human|not (a )?(bot|ai))\b|\bnot (a |an )?(bot|ai)\b/i.test(text)) hard.push("claims to be human / denies being AI; never do that, just steer back to the trade");
   if (/—/.test(text)) hard.push("uses an em dash");
+  if (/\b(still open|expendable|let me know if|feel free|no pressure|no worries if|per game|a game\b|ppg|points? per)\b|\d+(\.\d+)?\s*(a|per) (game|week)/i.test(text)) hard.push("salesman talk (re-pitching / stats / 'still open'); real texts don't sell, they just say the ask");
   if (/\b(hit|press|tap|just|go|pls|please|gotta|need to|needa)\s+accept\b|\baccept (it|rn|now|when|the trade|on espn)\b|\b(check|look at) (ur|your) espn\b/i.test(text)) hard.push("pesters them to accept; never do that, they'll accept when they want");
   if (p.emoji.frequency === "never" && /\p{Extended_Pictographic}/u.test(text)) hard.push("uses emoji but they never do");
   if (hard.length) return { pass: false, score: 0, feedback: hard.join("; ") };
@@ -44,7 +45,7 @@ export async function checkDraft(bundle: VoiceBundle, text: string): Promise<Dra
     model: modelId(),
     max_tokens: 1000,
     output_config: { format: zodOutputFormat(Verdict), effort: "low" },
-    system: "You judge whether a text message could have been written by a specific person, given real examples of their texts. Be harsh about anything that reads like an assistant: full sentences with perfect punctuation, hedging, over-explaining, 'Hey!', exclamation-heavy enthusiasm, lists, or vocabulary they don't use. Separately judge clarity: casual and sloppy is fine, but the recipient must be able to tell what is being asked or said. Garbled slang salad is a fail.",
+    system: "You judge whether a text message could have been written by a specific person, given real examples of their texts. Be harsh about anything that reads like an assistant: full sentences with perfect punctuation, hedging, over-explaining, 'Hey!', exclamation-heavy enthusiasm, lists, or vocabulary they don't use. Separately judge clarity: casual and sloppy is fine, but the recipient must be able to tell what is being asked or said. Garbled slang salad is a fail. Anything that reads like a salesman (justifying a trade with stats, 'still open?', 'he's expendable') is an automatic 3.",
     messages: [{
       role: "user",
       content: `Real texts from them:\n${bundle.fewshots.slice(0, 25).map((f) => `- ${f.text}`).join("\n")}\n\nProfile: ${p.summary} They never: ${p.avoid.join("; ")}.\n\nCandidate:\n${text}`,

@@ -78,7 +78,7 @@ export async function reviewIncomingTrades(ctx: Ctx, bundle: VoiceBundle, opts: 
     if (action === "accept" && gain(ctx, give, get) < ctx.rules.acceptIncomingMinGainPct) { action = "counter"; d.messageGoal = `Close but not quite; ask for a small add. ${d.messageGoal}`; }
     let cGive = d.counterGive ?? [], cGet = d.counterGet ?? [];
     if (action === "counter") {
-      const cc = checkTrade({ give: cGive, get: cGet, values: ctx.values, rosRank: ctx.rosRank, players: ctx.players, mode: "respond", committed: ctx.committed, lineupDelta: lineupDelta(ctx, cGive, cGet) }, ctx.cfg, ctx.rules);
+      const cc = checkTrade({ give: cGive, get: cGet, values: ctx.values, rosRank: ctx.rosRank, players: ctx.players, mode: "respond", committed: ctx.committed, benchIds: ctx.benchIds, lineupDelta: lineupDelta(ctx, cGive, cGet) }, ctx.cfg, ctx.rules);
       const valid = cc.ok && cGive.every((id) => ctx.me.roster.some((e) => e.player.id === id)) && cGet.every((id) => other.roster.some((e) => e.player.id === id));
       if (!valid) { action = "reject"; d.messageGoal = `Pass on this one, friendly. ${d.messageGoal}`; }
     }

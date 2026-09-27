@@ -10,7 +10,7 @@ import type { ExportedMessage } from "../voice/types.js";
 const input = process.argv[2] ?? resolve(repoRoot, "data/messages-export.json");
 const messages = JSON.parse(readFileSync(input, "utf8")) as ExportedMessage[];
 console.log(`building profile from ${messages.length} messages…`);
-const bundle = await buildVoiceBundle(messages);
+const bundle = await buildVoiceBundle(messages, { maxMessages: 6000 });
 mkdirSync(resolve(repoRoot, "data"), { recursive: true });
 const out = resolve(repoRoot, "data/voice-profile.json");
 writeFileSync(out, JSON.stringify(bundle, null, 2));

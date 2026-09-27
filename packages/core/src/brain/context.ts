@@ -28,6 +28,8 @@ export interface Ctx {
   store: Store;
   /** my players already committed in a pending ESPN trade; never offer them again */
   committed: Set<number>;
+  /** my players who don't make my optimal lineup: cheaper to give away */
+  benchIds: Set<number>;
 }
 
 export async function loadCtx(opts: { freeAgentLimit?: number; week?: number } = {}): Promise<Ctx> {
@@ -64,7 +66,9 @@ export async function loadCtx(opts: { freeAgentLimit?: number; week?: number } =
     }
   }
 
-  return { cfg, rules, client, snap, me, week, pool, players, values, linearValues, rosRank, sleeper, store: store(), committed };
+  const starters = new Set(optimizeLineup(me.roster, snap.settings).starters.map((x) => x.player.id));
+  const benchIds = new Set(me.roster.map((e) => e.player.id).filter((id) => !starters.has(id)));
+  return { cfg, rules, client, snap, me, week, pool, players, values, linearValues, rosRank, sleeper, store: store(), committed, benchIds };
 }
 
 export function playerLine(ctx: Ctx, p: Player): string {
