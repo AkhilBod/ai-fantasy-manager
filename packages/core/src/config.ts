@@ -28,7 +28,11 @@ export const RulesSchema = z.object({
   maxFaabPctPerWeek: z.number(),
   maxDropsPerWeek: z.number(),
   maxOpenTrades: z.number(),
+  /** value gain required for deals I initiate */
   minTradeGainPct: z.number(),
+  /** value gain required when accepting/countering THEIR offer: just don't lose */
+  minRespondGainPct: z.number().default(0.02),
+  minRespondLineupDelta: z.number().default(0),
   protectTopNRanked: z.number(),
   protectedTradeGainPct: z.number(),
   maxTextsPerPersonPerDay: z.number(),
@@ -41,8 +45,6 @@ export const RulesSchema = z.object({
   acceptIncomingMinGainPct: z.number().default(0.2),
   maxNewOffersPerWeek: z.number().default(2),
   teamCooldownDays: z.number().default(10),
-  /** never propose a deal where the other side loses more than this by our own valuation */
-  maxTheirLossPct: z.number().default(0.15),
   /** never appear in an outgoing text, whatever the voice profile says */
   bannedWords: z.array(z.string()).default([]),
   maxMessageWords: z.number().default(15),
@@ -75,7 +77,8 @@ export function loadLeagueConfig(): LeagueConfig {
 export function loadRules(): Rules {
   const fromEnv = process.env.RULES_JSON;
   if (fromEnv) return RulesSchema.parse(JSON.parse(fromEnv));
-  return RulesSchema.parse(readJson(resolve(repoRoot, "config/rules.json")));
+  const own = resolve(repoRoot, "config/rules.json");
+  return RulesSchema.parse(readJson(existsSync(own) ? own : resolve(repoRoot, "config/rules.example.json")));
 }
 
 export const env = {

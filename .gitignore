@@ -3,6 +3,7 @@ dist/
 cdk.out/
 .env
 config/league.json
+config/rules.json
 data/
 *.tsbuildinfo
 voice-profile.json

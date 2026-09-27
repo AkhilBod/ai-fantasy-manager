@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
@@ -39,7 +39,8 @@ export class FfmStack extends Stack {
     super(scope, id, props);
 
     const league = readFileSync(resolve(root, "config/league.json"), "utf8");
-    const rules = readFileSync(resolve(root, "config/rules.json"), "utf8");
+    const rulesPath = [resolve(root, "config/rules.json"), resolve(root, "config/rules.example.json")].find((p) => existsSync(p))!;
+    const rules = readFileSync(rulesPath, "utf8");
     const leagueCfg = JSON.parse(league) as { timezone?: string; teams: Record<string, { phone?: string; self?: boolean }> };
     const tz = leagueCfg.timezone ?? "America/New_York";
     const myPhone = Object.values(leagueCfg.teams).find((t) => t.self)?.phone ?? "";

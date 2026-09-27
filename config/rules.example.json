@@ -15,21 +15,16 @@
   "autoAcceptIncoming": true,
   "maxNewOffersPerWeek": 9,
   "teamCooldownDays": 7,
-  "maxTheirLossPct": 0.15,
   "acceptIncomingMinGainPct": 0.2,
-  "bannedWords": [
-    "nga",
-    "ngas",
-    "ng",
-    "nigga",
-    "niggas"
-  ],
+  "bannedWords": [],
   "maxMessageWords": 15,
   "maxMessageLines": 2,
   "minLineupDelta": 1.0,
   "maxRepliesPerPersonPerDay": 60,
-  "maxSilentProposalsPerDay": 2,
-  "silentProposalCooldownDays": 4,
+  "maxSilentProposalsPerDay": 9,
+  "silentProposalCooldownDays": 3,
   "unresponsiveCooldownDays": 21,
-  "declinedCooldownDays": 14
+  "declinedCooldownDays": 14,
+  "minRespondGainPct": 0.02,
+  "minRespondLineupDelta": 0.0
 }

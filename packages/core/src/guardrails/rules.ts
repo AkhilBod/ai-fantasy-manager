@@ -12,6 +12,8 @@ export interface TradeCheckInput {
   lineupDelta?: number;
   /** my players already in a pending ESPN trade */
   committed?: Set<number>;
+  /** "initiate" (my idea, higher bar) or "respond" (their offer / my counter to it: just don't lose) */
+  mode?: "initiate" | "respond";
 }
 
 export interface CheckResult { ok: boolean; reasons: string[] }
@@ -25,28 +27,17 @@ export function checkTrade(input: TradeCheckInput, cfg: LeagueConfig, rules: Rul
   for (const id of input.give) {
     if (cfg.untouchables.includes(id)) reasons.push(`${name(input, id)} is untouchable`);
     if (input.committed?.has(id)) reasons.push(`${name(input, id)} is already in a pending trade`);
-    const st = input.players.get(id)?.injuryStatus;
-    if (st && UNPLAYABLE.has(st)) reasons.push(`${name(input, id)} is ${st}; don't offer injured players`);
     const rank = input.rosRank?.get(id);
     if (rank != null && rank <= rules.protectTopNRanked && gain < rules.protectedTradeGainPct) {
       reasons.push(`${name(input, id)} is top-${rules.protectTopNRanked} ranked; need ≥${pct(rules.protectedTradeGainPct)} gain, got ${pct(gain)}`);
     }
   }
-  if (gain < rules.minTradeGainPct) reasons.push(`value gain ${pct(gain)} below floor ${pct(rules.minTradeGainPct)} (give ${giveV.toFixed(1)}, get ${getV.toFixed(1)})`);
-  if (input.lineupDelta != null && input.lineupDelta < rules.minLineupDelta) reasons.push(`starting lineup would change by ${input.lineupDelta.toFixed(1)} pts/wk (need ≥ ${rules.minLineupDelta})`);
+  const minGain = input.mode === "respond" ? rules.minRespondGainPct : rules.minTradeGainPct;
+  const minLineup = input.mode === "respond" ? rules.minRespondLineupDelta : rules.minLineupDelta;
+  if (gain < minGain) reasons.push(`value gain ${pct(gain)} below floor ${pct(minGain)} (give ${giveV.toFixed(1)}, get ${getV.toFixed(1)})`);
+  if (input.lineupDelta != null && input.lineupDelta < minLineup) reasons.push(`starting lineup would change by ${input.lineupDelta.toFixed(1)} pts/wk (need ≥ ${minLineup})`);
   if (input.give.length === 0 || input.get.length === 0) reasons.push("trade must move players both ways");
   return { ok: reasons.length === 0, reasons };
-}
-
-/** Outgoing offers only: an edge is fine, a fleecing is not. */
-export function checkFairness(input: Pick<TradeCheckInput, "give" | "get" | "values" | "players">, rules: Rules): CheckResult {
-  const giveV = input.give.reduce((s, id) => s + (input.values.get(id) ?? 0), 0);
-  const getV = input.get.reduce((s, id) => s + (input.values.get(id) ?? 0), 0);
-  const theirGain = getV === 0 ? (giveV > 0 ? 1 : 0) : (giveV - getV) / getV;
-  if (theirGain < -rules.maxTheirLossPct) {
-    return { ok: false, reasons: [`unfair to them: they'd lose ${pct(-theirGain)} of value (limit ${pct(rules.maxTheirLossPct)})`] };
-  }
-  return { ok: true, reasons: [] };
 }
 
 /** Incoming offers: refuse if anything coming to me can't play (OUT / IR / suspended). Discounted value isn't enough; a friend dumping an injured guy is the classic fantasy scam. */

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { llm, modelId, assertNotRefused } from "./llm.js";
 import { teamBlock, pickDrops, type Ctx } from "./context.js";
 import { lineupDelta } from "./context.js";
-import { checkTrade, checkFairness, checkReceivedHealthy, inQuietHours } from "../guardrails/rules.js";
+import { checkTrade, checkReceivedHealthy, inQuietHours } from "../guardrails/rules.js";
 import { newsBrief } from "../data/news.js";
 import { proposeTrade } from "../espn/transactions.js";
 import { draftMessage } from "../voice/draft.js";
@@ -77,7 +77,7 @@ export async function handleInbound(ctx: Ctx, bundle: VoiceBundle, n: Negotiatio
     system: [
       "You are negotiating a fantasy football trade over text on behalf of the manager of 'my team'. Decide the next move.",
       "accept = they've agreed to the current terms (or offered something at least as good for me). counter = propose different terms (or first terms, if none yet). reply = keep talking / answer a question / ask what they have in mind, without changing terms. walk_away = they're clearly not interested or it's a bad deal FOR ME. ignore = message doesn't need a response (banter, 'lol').",
-      "If THEY propose terms that favor me, that is not a scam: they chose it. Accept it (or lock it in via counter with the exact terms they named). Never walk away from a deal that helps my lineup. Fairness limits only apply to terms I invent.",
+      "If THEY propose terms that favor me, take them (accept, or lock in via counter with the exact terms they named). Never walk away from a deal that helps my lineup. The only thing that matters is my team; how the deal looks for them is their call.",
       "If they name a player without saying which side it's on, read it from rosters: a player on THEIR roster is what they'd send me. If still unclear, reply asking, don't guess.",
       "They may know a bot is texting for me. Don't deny it, don't discuss it; just talk trades like normal.",
       "Goal = the best STARTING lineup, not the biggest roster. Extra bench bodies are worth ~nothing; 3-for-1s that add depth but weaken a starter are bad. Judge every offer by my weekly starters.",
@@ -86,7 +86,7 @@ export async function handleInbound(ctx: Ctx, bundle: VoiceBundle, n: Negotiatio
       hasTerms ? "" : "There are NO terms yet: they reached out first. If they named players, evaluate that as their offer (counter with concrete terms or accept via counter). If they haven't said what they want, reply asking, in one short text.",
       n.status === "SUBMITTED" ? "The trade is ALREADY SUBMITTED on ESPN. Do not accept/counter again. Do NOT restate the terms and NEVER tell them to accept, press accept, or check ESPN; they'll do it when they want. Only reply if they ask a real question; otherwise ignore." : "",
       done ? "This trade is DONE (accepted on ESPN). Do NOT mention the terms, do NOT tell them to accept, do NOT re-propose. Light banter at most; default to ignore." : "",
-      `Hard limits: never give more than ${ctx.rules.maxCounterRounds} counters; don't accept anything the value check would reject; be a normal human, not desperate. Be fair: if they say no twice, take the no. Never pressure, guilt, or spam them. Be skeptical: if they suddenly push a player on me, check the news for why (injury, lost job, bye-week dump).`,
+      `Hard limits: never give more than ${ctx.rules.maxCounterRounds} counters; don't accept anything the value check would reject; be a normal human, not desperate. If they say no twice, take the no. Never pressure, guilt, or spam them. Be skeptical: if they suddenly push a player on me, check the news for why (injury, lost job, bye-week dump).`,
     ].filter(Boolean).join("\n"),
     messages: [{
       role: "user",
@@ -112,7 +112,7 @@ export async function handleInbound(ctx: Ctx, bundle: VoiceBundle, n: Negotiatio
     const onMine = t.give.every((id) => ctx.me.roster.some((e) => e.player.id === id));
     const onTheirs = t.get.every((id) => other.roster.some((e) => e.player.id === id));
     const ok = onMine && onTheirs
-      && checkTrade({ give: t.give, get: t.get, values: ctx.values, rosRank: ctx.rosRank, players: ctx.players, committed: ctx.committed, lineupDelta: lineupDelta(ctx, t.give, t.get) }, ctx.cfg, ctx.rules).ok
+      && checkTrade({ give: t.give, get: t.get, values: ctx.values, rosRank: ctx.rosRank, players: ctx.players, mode: "respond", committed: ctx.committed, lineupDelta: lineupDelta(ctx, t.give, t.get) }, ctx.cfg, ctx.rules).ok
       && checkReceivedHealthy(t.get, ctx.players).ok;
     if (ok && (outcome === "walk_away" || outcome === "reply" || outcome === "counter" || outcome === "ignore")) {
       n.give = t.give; n.get = t.get; outcome = "accept";
@@ -123,18 +123,17 @@ export async function handleInbound(ctx: Ctx, bundle: VoiceBundle, n: Negotiatio
   if (done && outcome === "walk_away") outcome = "ignore";
   if (d.action === "counter") {
     const give = d.counterGive ?? n.give, get = d.counterGet ?? n.get;
-    const check = checkTrade({ give, get, values: ctx.values, rosRank: ctx.rosRank, players: ctx.players }, ctx.cfg, ctx.rules);
-    const fair = checkFairness({ give, get, values: ctx.values, players: ctx.players }, ctx.rules);
-    if (!check.ok || !fair.ok || n.rounds >= ctx.rules.maxCounterRounds) {
+    const check = checkTrade({ give, get, values: ctx.values, rosRank: ctx.rosRank, players: ctx.players, mode: "respond", committed: ctx.committed, lineupDelta: lineupDelta(ctx, give, get) }, ctx.cfg, ctx.rules);
+    if (!check.ok || n.rounds >= ctx.rules.maxCounterRounds) {
       outcome = "walk_away";
-      d.messageGoal = `Politely pass on this one for now; keep it friendly. (${[...check.reasons, ...fair.reasons].join("; ") || "too many rounds"})`;
+      d.messageGoal = `Politely pass on this one for now; keep it friendly. (${check.reasons.join("; ") || "too many rounds"})`;
     } else {
       n.give = give; n.get = get; n.rounds += 1; n.status = "COUNTERED";
       d.messageGoal = `Counter: offer ${names(ctx, give)} for ${names(ctx, get)}. ${d.messageGoal}`;
     }
   }
   if (outcome === "accept") {
-    const check = checkTrade({ give: n.give, get: n.get, values: ctx.values, rosRank: ctx.rosRank, players: ctx.players, committed: ctx.committed, lineupDelta: lineupDelta(ctx, n.give, n.get) }, ctx.cfg, ctx.rules);
+    const check = checkTrade({ give: n.give, get: n.get, values: ctx.values, rosRank: ctx.rosRank, players: ctx.players, mode: "respond", committed: ctx.committed, lineupDelta: lineupDelta(ctx, n.give, n.get) }, ctx.cfg, ctx.rules);
     const healthy = checkReceivedHealthy(n.get, ctx.players);
     if (!check.ok || !healthy.ok) { outcome = "walk_away"; d.messageGoal = `Back out politely: ${[...check.reasons, ...healthy.reasons].join("; ")}`; }
     else {
@@ -272,15 +271,16 @@ export async function myProposalOutcomes(ctx: Ctx): Promise<Map<string, "PENDING
 }
 
 /**
- * Silent channel: propose on ESPN with no text. Only when none of my proposals
- * are pending, at most N per day, one per team, and not to a team I proposed
- * to in the last few days. They accept/reject in the app; if they text, the
- * thread picks it up.
+ * Silent channel: propose on ESPN with no text, as many as have real upside.
+ * One live proposal per team at a time, a short per-team cooldown, and never
+ * to someone on the no-offer list. They accept/reject in the app; if they
+ * text, the thread picks it up.
  */
 export async function silentProposals(ctx: Ctx, ideas: TradeIdea[]): Promise<string[]> {
   const notes: string[] = [];
-  const outcomes = await myProposalOutcomes(ctx);
-  if ([...outcomes.values()].some((s) => s === "PENDING")) { notes.push("skipped: I already have a proposal pending on ESPN"); return notes; }
+  // Pending proposals to OTHER teams don't block new ones; only one live proposal per team at a time.
+  const pendingTeams = new Set<number>();
+  for (const t of await ctx.client.pendingTrades().catch(() => [])) if (t.proposingTeamId === ctx.me.id) for (const i of t.items) if (i.toTeamId !== ctx.me.id) pendingTeams.add(i.toTeamId);
   const dayKey = `silent:${new Date().toISOString().slice(0, 10)}`;
   let sentToday = (await ctx.store.getState<number>(dayKey)) ?? 0;
   const all = await ctx.store.listNegotiations();
@@ -288,7 +288,7 @@ export async function silentProposals(ctx: Ctx, ideas: TradeIdea[]): Promise<str
   const disengaged = await disengagedTeams(ctx);
   for (const idea of ideas) {
     if (sentToday >= ctx.rules.maxSilentProposalsPerDay) break;
-    if (disengaged.has(idea.otherTeamId)) continue;
+    if (disengaged.has(idea.otherTeamId) || pendingTeams.has(idea.otherTeamId)) continue;
     if (all.some((n) => n.otherTeamId === idea.otherTeamId && (OPEN_STATUSES.has(n.status) || Date.now() - new Date(n.createdAt).getTime() < cooldownMs))) continue;
     const drops = pickDrops(ctx, idea.give, idea.get);
     const r = await proposeTrade({ client: ctx.client, teamId: ctx.me.id, week: ctx.week }, { otherTeamId: idea.otherTeamId, give: idea.give, get: idea.get, drops });

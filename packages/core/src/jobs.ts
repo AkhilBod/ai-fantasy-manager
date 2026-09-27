@@ -80,7 +80,7 @@ export async function tradeScanJob(): Promise<string> {
   for (const r of reviews) notes.push(`${r.action} offer from team ${r.fromTeamId} (${(r.myGainPct * 100).toFixed(0)}%)`);
   const open = (await ctx.store.listNegotiations({ open: true })).filter((n) => ACTIVE_STATUSES.has(n.status));
   const skip = [...open.map((n) => n.otherTeamId), ...(await disengagedTeams(ctx)).keys()];
-  const ideas = await scanTrades(ctx, { excludeTeamIds: skip, maxIdeas: Math.max(2, ctx.rules.maxSilentProposalsPerDay + 1) });
+  const ideas = await scanTrades(ctx, { excludeTeamIds: skip, maxIdeas: ctx.snap.settings.size });
   const opened: string[] = [];
   // Texted offers are rationed (1 per person per week, cap per day); the rest go to ESPN silently.
   const textBudget = Math.max(0, ctx.rules.maxOpenTrades - open.length);

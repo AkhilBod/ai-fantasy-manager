@@ -3,10 +3,9 @@ import { z } from "zod";
 import { llm, modelId, assertNotRefused } from "./llm.js";
 import { positionalNeeds, teamBlock, type Ctx } from "./context.js";
 import { lineupDelta } from "./context.js";
-import { checkTrade, checkFairness } from "../guardrails/rules.js";
+import { checkTrade } from "../guardrails/rules.js";
 import { sumValue } from "../valuation/player-value.js";
 import type { Team } from "../espn/types.js";
-import { UNPLAYABLE } from "../espn/constants.js";
 import { newsBrief } from "../data/news.js";
 
 export interface TradeIdea {
@@ -51,7 +50,7 @@ export async function scanTrades(ctx: Ctx, opts: { maxIdeas?: number; excludeTea
     model: modelId(),
     max_tokens: 8000,
     output_config: { format: zodOutputFormat(Ideas), effort: "high" },
-    system: "You are a sharp but fair fantasy football manager. Use everything a good manager uses: rest-of-season projections, season average, last-3-game form (L3), injuries and news, schedule/bye context, and the other manager's roster needs. The number that matters is myLineup (weekly starting-lineup gain); raw value sums lie. Prefer consolidating depth into a star (2-for-1 where I get the best player) over 1-for-2/3 deals that add bench bodies. Pick trades that are realistic (the other side has a genuine reason to say yes and would be fine with it a month later), improve my starting lineup rest-of-season, and don't gut depth. Prefer consolidating 2-for-1 when I have surplus. Never propose the same player to two teams. Never exploit a friend who's not paying attention; win on roster fit, not on them missing an injury. Never include OUT / IR / suspended players as pieces of an offer; nobody bites on damaged goods and it makes the offer look like a dump.",
+    system: "You are a sharp fantasy football manager whose only loyalty is my team. Use everything a good manager uses: rest-of-season projections, season average, last-3-game form (L3), injuries and news, schedule/bye context, and the other manager's roster needs. The number that matters is myLineup (weekly starting-lineup gain); raw value sums lie. Prefer consolidating depth into a star (2-for-1 where I get the best player) over 1-for-2/3 deals that add bench bodies. Pick trades that are realistic (the other side has a genuine reason to say yes and would be fine with it a month later), improve my starting lineup rest-of-season, and don't gut depth. Prefer consolidating 2-for-1 when I have surplus. Never propose the same player to two teams. The other side just needs a plausible reason to say yes (roster fit, positional need, name value); their loss on paper is not my problem. Injured players are fair game as throw-ins if the deal still works for the other side on paper; just don't lead with them.",
     messages: [{
       role: "user",
       content: [
@@ -61,7 +60,7 @@ export async function scanTrades(ctx: Ctx, opts: { maxIdeas?: number; excludeTea
         news ? `Latest news on players in the top candidates:\n${news}` : "",
         `Mechanically generated candidates (value-based):\n${candText}`,
         ``,
-        `Pick up to ${opts.maxIdeas ?? ctx.rules.maxOpenTrades} candidates (by #index) worth proposing, at most one per team, favoring the biggest myLineup gain that the other side could plausibly say yes to. Only choose from the list. Return an empty list ONLY if no candidate has myLineup ≥ ${ctx.rules.minLineupDelta}.`,
+        `Pick every candidate (by #index) with real upside, at most one per team, up to ${opts.maxIdeas ?? ctx.rules.maxOpenTrades}: the biggest myLineup gain per team that the other side could plausibly say yes to. Only choose from the list. Return an empty list ONLY if no candidate has myLineup ≥ ${ctx.rules.minLineupDelta}.`,
       ].filter(Boolean).join("\n"),
     }],
   });
@@ -75,8 +74,6 @@ export async function scanTrades(ctx: Ctx, opts: { maxIdeas?: number; excludeTea
   for (const idea of ideas) {
     const check = checkTrade({ give: idea.give, get: idea.get, values: ctx.values, rosRank: ctx.rosRank, players: ctx.players, committed: ctx.committed, lineupDelta: lineupDelta(ctx, idea.give, idea.get) }, ctx.cfg, ctx.rules);
     if (!check.ok) { console.log(`[trades] dropped idea vs team ${idea.otherTeamId}: ${check.reasons.join("; ")}`); continue; }
-    const fair = checkFairness({ give: idea.give, get: idea.get, values: ctx.linearValues, players: ctx.players }, ctx.rules);
-    if (!fair.ok) { console.log(`[trades] dropped idea vs team ${idea.otherTeamId}: ${fair.reasons.join("; ")}`); continue; }
     if (idea.give.some((id) => used.has(id))) continue;
     const other = others.find((t) => t.id === idea.otherTeamId);
     if (!other || !idea.get.every((id) => other.roster.some((e) => e.player.id === id)) || !idea.give.every((id) => ctx.me.roster.some((e) => e.player.id === id))) continue;
@@ -93,7 +90,7 @@ export function gain(ctx: Ctx, give: number[], get: number[]): number {
 }
 
 function generateCandidates(ctx: Ctx, others: Team[]) {
-  const mine = ctx.me.roster.map((e) => e.player).filter((p) => !ctx.cfg.untouchables.includes(p.id) && !UNPLAYABLE.has(p.injuryStatus) && !ctx.committed.has(p.id));
+  const mine = ctx.me.roster.map((e) => e.player).filter((p) => !ctx.cfg.untouchables.includes(p.id) && !ctx.committed.has(p.id));
   const out: { otherTeamId: number; give: number[]; get: number[]; myGainPct: number; theirGainPct: number }[] = [];
   const v = (id: number) => ctx.values.get(id) ?? 0;
   const lv = (id: number) => ctx.linearValues.get(id) ?? 0;
@@ -105,7 +102,7 @@ function generateCandidates(ctx: Ctx, others: Team[]) {
       for (const g of mine) {
         const my = (v(want.id) - v(g.id)) / Math.max(1, v(g.id));
         const their = (lv(g.id) - lv(want.id)) / Math.max(1, lv(want.id));
-        if (my >= ctx.rules.minTradeGainPct && their >= -ctx.rules.maxTheirLossPct) out.push({ otherTeamId: t.id, give: [g.id], get: [want.id], myGainPct: my, theirGainPct: their });
+        if (my >= ctx.rules.minTradeGainPct) out.push({ otherTeamId: t.id, give: [g.id], get: [want.id], myGainPct: my, theirGainPct: their });
       }
       // 2-for-1 consolidation
       for (let i = 0; i < mine.length; i++) for (let j = i + 1; j < mine.length; j++) {
@@ -113,7 +110,7 @@ function generateCandidates(ctx: Ctx, others: Team[]) {
         const gv = v(give[0]) + v(give[1]);
         const my = (v(want.id) - gv) / Math.max(1, gv);
         const their = (lv(give[0]) + lv(give[1]) - lv(want.id)) / Math.max(1, lv(want.id));
-        if (my >= ctx.rules.minTradeGainPct && their >= -ctx.rules.maxTheirLossPct && v(want.id) > Math.max(v(give[0]), v(give[1])) * 1.3) out.push({ otherTeamId: t.id, give, get: [want.id], myGainPct: my, theirGainPct: their });
+        if (my >= ctx.rules.minTradeGainPct && v(want.id) > Math.max(v(give[0]), v(give[1])) * 1.3) out.push({ otherTeamId: t.id, give, get: [want.id], myGainPct: my, theirGainPct: their });
       }
     }
   }

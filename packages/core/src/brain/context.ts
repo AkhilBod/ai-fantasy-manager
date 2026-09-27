@@ -46,8 +46,8 @@ export async function loadCtx(opts: { freeAgentLimit?: number; week?: number } =
     client.pendingTrades().catch(() => []),
   ]);
   const committed = new Set<number>();
-  // Committed = players I'm sending in a trade I proposed, or in any trade that's been accepted and is awaiting processing.
-  for (const t of pending) for (const i of t.items) if (i.fromTeamId === cfg.myTeamId && (t.proposingTeamId === cfg.myTeamId || t.type === "TRADE_ACCEPT")) committed.add(i.playerId);
+  // Committed = my players in a trade the other side already accepted (ESPN would fail a second deal for them).
+  for (const t of pending) for (const i of t.items) if (i.fromTeamId === cfg.myTeamId && t.type === "TRADE_ACCEPT") committed.add(i.playerId);
   const rostered = snap.teams.flatMap((t) => t.roster.map((e) => e.player));
   const pool = [...rostered, ...fas];
   const players = new Map(pool.map((p) => [p.id, p]));

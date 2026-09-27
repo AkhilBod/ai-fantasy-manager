@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkBid, checkDrop, checkFairness, checkReceivedHealthy, checkTrade, inQuietHours } from "../src/guardrails/rules.js";
+import { checkBid, checkDrop, checkReceivedHealthy, checkTrade, inQuietHours } from "../src/guardrails/rules.js";
 import { handleControlMessage, isPaused } from "../src/guardrails/kill-switch.js";
 import { LocalStore } from "../src/store/local.js";
 import { RulesSchema, type LeagueConfig } from "../src/config.js";
@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const rules = RulesSchema.parse({
-  maxFaabPctPerWeek: 0.35, maxDropsPerWeek: 3, maxOpenTrades: 2, minTradeGainPct: 0.05, protectTopNRanked: 12,
+  maxFaabPctPerWeek: 0.35, maxDropsPerWeek: 3, maxOpenTrades: 2, minTradeGainPct: 0.05, minRespondGainPct: 0.02, minRespondLineupDelta: 0, protectTopNRanked: 12,
   protectedTradeGainPct: 0.15, maxTextsPerPersonPerDay: 3, maxRepliesPerPersonPerDay: 30, quietHours: { start: 23, end: 8 }, negotiationExpiryDays: 3, maxCounterRounds: 4, autoAcceptIncoming: false, bannedWords: ["nga"], maxMessageWords: 15, maxMessageLines: 2, minLineupDelta: 1, maxSilentProposalsPerDay: 2, silentProposalCooldownDays: 4, unresponsiveCooldownDays: 21, declinedCooldownDays: 14,
 });
 const cfg: LeagueConfig = { leagueId: 1, season: 2026, myTeamId: 1, timezone: "America/New_York", teams: {}, untouchables: [77], trustedFirst: [] };
@@ -30,6 +30,11 @@ describe("checkTrade", () => {
     expect(r.ok).toBe(false);
     expect(r.reasons.join()).toMatch(/untouchable/);
   });
+  it("uses a lower bar when responding to their offer", () => {
+    expect(checkTrade({ give: [1], get: [2], values: new Map([[1, 100], [2, 103]]), players, mode: "respond" }, cfg, rules).ok).toBe(true);
+    expect(checkTrade({ give: [1], get: [2], values: new Map([[1, 100], [2, 103]]), players, mode: "initiate" }, cfg, rules).ok).toBe(false);
+    expect(checkTrade({ give: [1], get: [2], values: new Map([[1, 100], [2, 99]]), players, mode: "respond" }, cfg, rules).ok).toBe(false);
+  });
   it("blocks trades that don't improve the starting lineup", () => {
     expect(checkTrade({ give: [1], get: [2], values: new Map([[1, 100], [2, 120]]), players, lineupDelta: -2 }, cfg, rules).ok).toBe(false);
     expect(checkTrade({ give: [1], get: [2], values: new Map([[1, 100], [2, 120]]), players, lineupDelta: 3 }, cfg, rules).ok).toBe(true);
@@ -38,14 +43,6 @@ describe("checkTrade", () => {
     const rosRank = new Map([[1, 5]]);
     expect(checkTrade({ give: [1], get: [2], values: new Map([[1, 100], [2, 108]]), rosRank, players }, cfg, rules).ok).toBe(false);
     expect(checkTrade({ give: [1], get: [2], values: new Map([[1, 100], [2, 120]]), rosRank, players }, cfg, rules).ok).toBe(true);
-  });
-});
-
-describe("checkFairness", () => {
-  const players = new Map([[1, player({ id: 1, position: "RB" })], [2, player({ id: 2, position: "WR" })]]);
-  it("allows an edge but blocks a fleecing", () => {
-    expect(checkFairness({ give: [1], get: [2], values: new Map([[1, 90], [2, 100]]), players }, rules).ok).toBe(true);
-    expect(checkFairness({ give: [1], get: [2], values: new Map([[1, 50], [2, 100]]), players }, rules).ok).toBe(false);
   });
 });
 

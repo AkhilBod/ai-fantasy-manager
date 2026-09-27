@@ -3,7 +3,7 @@ import { z } from "zod";
 import { llm, modelId, assertNotRefused } from "./llm.js";
 import { teamBlock, positionalNeeds, pickDrops, type Ctx } from "./context.js";
 import { lineupDelta } from "./context.js";
-import { checkTrade, checkFairness, checkReceivedHealthy } from "../guardrails/rules.js";
+import { checkTrade, checkReceivedHealthy } from "../guardrails/rules.js";
 import { newsBrief } from "../data/news.js";
 import { proposeTrade, respondToTrade } from "../espn/transactions.js";
 import type { VoiceBundle } from "../voice/types.js";
@@ -78,9 +78,8 @@ export async function reviewIncomingTrades(ctx: Ctx, bundle: VoiceBundle, opts: 
     if (action === "accept" && gain(ctx, give, get) < ctx.rules.acceptIncomingMinGainPct) { action = "counter"; d.messageGoal = `Close but not quite; ask for a small add. ${d.messageGoal}`; }
     let cGive = d.counterGive ?? [], cGet = d.counterGet ?? [];
     if (action === "counter") {
-      const cc = checkTrade({ give: cGive, get: cGet, values: ctx.values, rosRank: ctx.rosRank, players: ctx.players, committed: ctx.committed, lineupDelta: lineupDelta(ctx, cGive, cGet) }, ctx.cfg, ctx.rules);
-      const fair = checkFairness({ give: cGive, get: cGet, values: ctx.linearValues, players: ctx.players }, ctx.rules);
-      const valid = cc.ok && fair.ok && cGive.every((id) => ctx.me.roster.some((e) => e.player.id === id)) && cGet.every((id) => other.roster.some((e) => e.player.id === id));
+      const cc = checkTrade({ give: cGive, get: cGet, values: ctx.values, rosRank: ctx.rosRank, players: ctx.players, mode: "respond", committed: ctx.committed, lineupDelta: lineupDelta(ctx, cGive, cGet) }, ctx.cfg, ctx.rules);
+      const valid = cc.ok && cGive.every((id) => ctx.me.roster.some((e) => e.player.id === id)) && cGet.every((id) => other.roster.some((e) => e.player.id === id));
       if (!valid) { action = "reject"; d.messageGoal = `Pass on this one, friendly. ${d.messageGoal}`; }
     }
 
